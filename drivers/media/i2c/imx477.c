@@ -147,7 +147,7 @@ enum pad_types {
 #define V4L2_CID_I2C_8B				(V4L2_CID_USER_S2255_BASE + 1)
 #define V4L2_CID_I2C_16B			(V4L2_CID_USER_S2255_BASE + 2)
 #define V4L2_CID_I2C_8B_GENERIC		(V4L2_CID_USER_S2255_BASE + 3)
-#define V4L2_CID_POWER_ON			(V4L2_CID_USER_S2255_BASE + 4)
+#define V4L2_CID_POWER_ON			(V4L2_CID_USER_S2255_BASE + 4)		// This should be disabled as it forces to redo power_on during init_control?
 #define V4L2_CID_I2C_8B_READ		(V4L2_CID_USER_S2255_BASE + 5)
 #define V4L2_CID_I2C_16B_READ		(V4L2_CID_USER_S2255_BASE + 6)
 #define V4L2_CID_I2C_SET_GENERIC_ID	(V4L2_CID_USER_S2255_BASE + 7)
@@ -155,6 +155,7 @@ enum pad_types {
 #define V4L2_CID_I2C_8B_GENERIC_READ (V4L2_CID_USER_S2255_BASE + 9)
 #define V4L2_CID_ROI_START_X		(V4L2_CID_USER_S2255_BASE + 10)
 #define V4L2_CID_ROI_START_Y		(V4L2_CID_USER_S2255_BASE + 11)
+#define V4L2_CID_FORCE_TRIGGER		(V4L2_CID_USER_S2255_BASE + 12)
 
 
 struct imx477_reg {
@@ -1805,6 +1806,7 @@ struct imx477 {
 
 	/* Trigger mode */
 	int trigger_mode_of;
+	struct v4l2_ctrl *force_trigger_ctrl;	// New alternative way to change the trigger
 
 	/*
 	 * Mutex for serialized access:
@@ -2305,6 +2307,11 @@ static int imx477_set_ctrl(struct v4l2_ctrl *ctrl)
 		printk("imx477: %s() V4L2_CID_ROI_START_Y: Set ROI start Y to %d\n", __func__, (ctrl->val & 0xFFFC));
 		break;
 
+	case V4L2_CID_FORCE_TRIGGER:
+		imx477->trigger_mode_of = ctrl->val;
+		printk("imx477: %s() saved trigger_mode_of=%d. I2C ops done later part of imx477_start_streaming()\n", __func__, ctrl->val);
+		break;
+
 	case V4L2_CID_I2C_8B:   // Write 8b
 		printk("imx477: imx477_set_ctrl() V4L2_CID_I2C_8B I2C write 8b reg 0x%X <== 0x%X\n",
 			((ctrl->val>>16) & 0xFFFF), (ctrl->val & 0xFF) );
@@ -2334,11 +2341,14 @@ static int imx477_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = 0;
 		break;
 	case V4L2_CID_POWER_ON:   // Power on
+		/*
 		printk("imx477: imx477_set_ctrl() V4L2_CID_POWER ON with val=%d\n", ctrl->val);
 		if (ctrl->val)
 			ret = imx477_power_on(&client->dev);
 		else
 			ret = imx477_power_off(&client->dev);
+		*/
+		printk("imx477: imx477_set_ctrl() V4L2_CID_POWER ON disabled for now to avoid automatic call during __v4l2_ctrl_handler_setup. Called with val=%d\n", ctrl->val);
 		break;
 	case V4L2_CID_I2C_8B_READ:
 		printk("imx477: imx477_set_ctrl() V4L2_CID_I2C_8B_READ. Read-only i2c op, not doing anyting\n");
@@ -2820,6 +2830,7 @@ static int imx477_start_streaming(struct imx477 *imx477)
 	}
 	/* Set vsync trigger mode: 0=standalone, 1=source, 2=sink */
 	tm = (imx477->trigger_mode_of >= 0) ? imx477->trigger_mode_of : trigger_mode;
+	printk("imx477 %s() Writing sync-trigger regs for tm=%d\n", __func__, tm);
 	imx477_write_reg(imx477, IMX477_REG_MC_MODE,
 			 IMX477_REG_VALUE_08BIT, (tm > 0) ? 1 : 0);
 	imx477_write_reg(imx477, IMX477_REG_MS_SEL,
@@ -3172,6 +3183,16 @@ static const struct v4l2_ctrl_config roi_start_y_ctrl = {
         .def = 0,
 };
 
+static const struct v4l2_ctrl_config force_trigger_ctrl = {
+        .ops = &imx477_ctrl_ops,
+        .name = "V4L2_force_trigger",
+        .id = V4L2_CID_FORCE_TRIGGER,
+        .type = V4L2_CTRL_TYPE_INTEGER,
+        .min=0,
+        .max = 2,
+        .step = 1,
+        .def = 0,
+};
 
 
 
@@ -3336,6 +3357,10 @@ static int imx477_init_controls(struct imx477 *imx477)
 	if (imx477->roi_start_y == NULL)
 	   printk("imx477: imx477_init_controls() v4l2_ctrl_new_custom(roi_start_y_ctrl) FAILED err=%d\n", ctrl_hdlr->error);
 
+
+	imx477->force_trigger_ctrl = v4l2_ctrl_new_custom(ctrl_hdlr, &force_trigger_ctrl, NULL);
+	if (imx477->force_trigger_ctrl == NULL)
+	   printk("imx477: imx477_init_controls() v4l2_ctrl_new_custom(force_trigger_ctrl) FAILED err=%d\n", ctrl_hdlr->error);
 
 
 	ret = v4l2_fwnode_device_parse(&client->dev, &props);
