@@ -2116,6 +2116,23 @@ static void imx477_set_ROI_size(struct imx477 *imx477)
     uint16_t y_start = (imx477->roi_start_y == NULL) ? 0 : imx477->roi_start_y->val  & 0xFFFC;
     uint16_t x_end   = x_start + x_size  - 1;
     uint16_t y_end   = y_start + y_size - 1;
+    /*
+    if (imx477->hflip->val)		// When flipping end and start are swapped
+    {
+		printk("%s():   Hflip, swapping x_start and x_end\n", __func__);
+		uint16_t tmp = x_start;
+		x_start = x_end;
+		x_end = tmp;
+	}
+    if (imx477->vflip->val)		// When flipping end and start are swapped
+    {
+		printk("%s():   Vflip, swapping y_start and y_end\n", __func__);
+		uint16_t tmp = y_start;
+		y_start = y_end;
+		y_end = tmp;
+	}
+	*/
+
     printk("%s(): Setting regs for width=%d height=%d ROI: {%d,%d}-->{%d,%d}\n", 
             __func__, x_size, y_size, x_start, y_start, x_end, y_end);
     imx477_write_reg(imx477, IMX477_X_START_REG,          IMX477_REG_VALUE_16BIT, x_start);
@@ -2282,6 +2299,7 @@ static int imx477_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = imx477_write_reg(imx477, IMX477_REG_ORIENTATION, 1,
 				       imx477->hflip->val |
 				       imx477->vflip->val << 1);
+		imx477_set_ROI_size(imx477);
 		break;
 	case V4L2_CID_VBLANK:
 		printk("imx477: %s() V4L2_CID_VBLANK: Set fame length to total %d\n", __func__, imx477->roi_height + ctrl->val);
@@ -2296,15 +2314,21 @@ static int imx477_set_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_ROI_START_X:
 		//ctrl->val = ctrl->val & 0xFFFC;
-		ret = imx477_write_reg(imx477, IMX477_X_START_REG, 2,
-				       (ctrl->val & 0xFFFC));
-		printk("imx477: %s() V4L2_CID_ROI_START_X: Set ROI start X to %d\n", __func__, (ctrl->val & 0xFFFC));
+		// This depends on flipping, better to use imx477_set_ROI_size()
+		//ret = imx477_write_reg(imx477, IMX477_X_START_REG, 2,
+		//       (ctrl->val & 0xFFFC));
+		printk("imx477: %s() V4L2_CID_ROI_START_X: Set ROI start X to %d, calling imx477_set_ROI_size()\n", __func__, (ctrl->val & 0xFFFC));
+		//imx477->roi_start_x->val  = (ctrl->val & 0xFFFC);
+		imx477_set_ROI_size(imx477);
 		break;
 	case V4L2_CID_ROI_START_Y:
 		//ctrl->val = ctrl->val & 0xFFFC;
-		ret = imx477_write_reg(imx477, IMX477_Y_START_REG, 2,
-				       (ctrl->val & 0xFFFC));
-		printk("imx477: %s() V4L2_CID_ROI_START_Y: Set ROI start Y to %d\n", __func__, (ctrl->val & 0xFFFC));
+		// This depends on flipping, better to use imx477_set_ROI_size()
+		//ret = imx477_write_reg(imx477, IMX477_Y_START_REG, 2,
+		//		       (ctrl->val & 0xFFFC));
+		printk("imx477: %s() V4L2_CID_ROI_START_Y: Set ROI start Y to %d, calling imx477_set_ROI_size()\n", __func__, (ctrl->val & 0xFFFC));
+		//imx477->roi_start_y->val = (ctrl->val & 0xFFFC);
+		imx477_set_ROI_size(imx477);
 		break;
 
 	case V4L2_CID_FORCE_TRIGGER:
