@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/videodev2.h>
+#include <linux/dev_printk.h>
 
 #include <media/v4l2-async.h>
 #include <media/v4l2-common.h>
@@ -49,16 +50,19 @@
 #define CFE_MODULE_NAME	"rp1-cfe"
 #define CFE_VERSION	"1.0"
 
-bool cfe_debug_verbose;
+bool cfe_debug_verbose;// = 1;
+
 module_param_named(verbose_debug, cfe_debug_verbose, bool, 0644);
 MODULE_PARM_DESC(verbose_debug, "verbose debugging messages");
+
 
 #define cfe_dbg_verbose(fmt, arg...)                          \
 	do {                                                  \
 		if (cfe_debug_verbose)                        \
-			dev_dbg(&cfe->pdev->dev, fmt, ##arg); \
+			printk(fmt, ##arg); /*dev_dbg(&cfe->pdev->dev, fmt, ##arg);*/ \
 	} while (0)
 #define cfe_dbg(fmt, arg...) dev_dbg(&cfe->pdev->dev, fmt, ##arg)
+//#define cfe_dbg(fmt, arg...) printk(fmt, ##arg) /*dev_dbg(&cfe->pdev->dev, fmt, ##arg)*/
 #define cfe_info(fmt, arg...) dev_info(&cfe->pdev->dev, fmt, ##arg)
 #define cfe_err(fmt, arg...) dev_err(&cfe->pdev->dev, fmt, ##arg)
 
@@ -394,6 +398,7 @@ static bool test_all_nodes(struct cfe_device *cfe, unsigned long precond,
 
 static int mipi_cfg_regs_show(struct seq_file *s, void *data)
 {
+	printk("cfe: cfe mipi_cfg regs_show()\n");
 	struct cfe_device *cfe = s->private;
 	int ret;
 
@@ -416,6 +421,8 @@ static int mipi_cfg_regs_show(struct seq_file *s, void *data)
 
 static int format_show(struct seq_file *s, void *data)
 {
+	printk("cfe: cfe format_show()\n");
+	
 	struct cfe_device *cfe = s->private;
 	unsigned int i;
 
@@ -458,6 +465,7 @@ DEFINE_SHOW_ATTRIBUTE(format);
 const struct cfe_fmt *find_format_by_code(u32 code)
 {
 	unsigned int i;
+	printk("cfe %s() called\n", __func__);
 
 	for (i = 0; i < ARRAY_SIZE(formats); i++) {
 		if (formats[i].code == code)
@@ -525,6 +533,7 @@ static int cfe_calc_format_size_bpl(struct cfe_device *cfe,
 {
 	unsigned int min_bytesperline;
 
+	printk("cfe %s() called\n", __func__);
 	v4l_bound_align_image(&f->fmt.pix.width, MIN_WIDTH, MAX_WIDTH, 2,
 			      &f->fmt.pix.height, MIN_HEIGHT, MAX_HEIGHT, 0, 0);
 
@@ -554,6 +563,7 @@ static void cfe_schedule_next_csi2_job(struct cfe_device *cfe)
 	unsigned int i;
 	dma_addr_t addr;
 
+	//printk("cfe %s() called\n", __func__);
 	for (i = 0; i < CSI2_NUM_CHANNELS; i++) {
 		struct cfe_node *node = &cfe->node[i];
 		unsigned int stride, size;
@@ -589,6 +599,7 @@ static void cfe_schedule_next_pisp_job(struct cfe_device *cfe)
 	struct cfe_buffer *buf;
 	unsigned int i;
 
+	printk("cfe %s() called\n", __func__);
 	for (i = CSI2_NUM_CHANNELS; i < NUM_NODES; i++) {
 		struct cfe_node *node = &cfe->node[i];
 
@@ -632,6 +643,7 @@ static bool cfe_check_job_ready(struct cfe_device *cfe)
 
 static void cfe_prepare_next_job(struct cfe_device *cfe)
 {
+	//printk("cfe %s() called\n", __func__);
 	cfe->job_queued = true;
 	cfe_schedule_next_csi2_job(cfe);
 	if (is_fe_enabled(cfe))
@@ -648,6 +660,7 @@ static void cfe_process_buffer_complete(struct cfe_node *node,
 {
 	struct cfe_device *cfe = node->cfe;
 
+	//printk("cfe %s() called\n", __func__);
 	cfe_dbg_verbose("%s: [%s] buffer:%p\n", __func__,
 			node_desc[node->id].name, &node->cur_frm->vb.vb2_buf);
 
@@ -824,6 +837,8 @@ static irqreturn_t cfe_isr(int irq, void *dev)
 
 static void cfe_start_channel(struct cfe_node *node)
 {
+	printk("cfe: cfe start_channel()\n");
+	
 	struct cfe_device *cfe = node->cfe;
 	struct v4l2_subdev_state *state;
 	struct v4l2_mbus_framefmt *source_fmt;
@@ -915,6 +930,8 @@ static void cfe_start_channel(struct cfe_node *node)
 
 static void cfe_stop_channel(struct cfe_node *node, bool fe_stop)
 {
+	printk("cfe: cfe stop_channel()\n");
+	
 	struct cfe_device *cfe = node->cfe;
 
 	cfe_dbg("%s: [%s] fe_stop %u\n", __func__,
@@ -967,6 +984,7 @@ static int cfe_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
 	unsigned int size = is_image_node(node) ? node->vid_fmt.fmt.pix.sizeimage :
 						  node->meta_fmt.fmt.meta.buffersize;
 
+	printk("cfe %s() called\n", __func__);
 	cfe_dbg("%s: [%s] type:%u\n", __func__, node_desc[node->id].name,
 		node->buffer_queue.type);
 
@@ -1049,6 +1067,8 @@ static void cfe_buffer_queue(struct vb2_buffer *vb)
 
 static u64 sensor_link_rate(struct cfe_device *cfe)
 {
+	printk("cfe: cfe sensor_linkrate()\n");
+	
 	struct v4l2_mbus_framefmt *source_fmt;
 	struct v4l2_subdev_state *state;
 	struct media_entity *entity;
@@ -1108,6 +1128,8 @@ static int cfe_start_streaming(struct vb2_queue *vq, unsigned int count)
 	int ret;
 
 	cfe_dbg("%s: [%s] begin.\n", __func__, node_desc[node->id].name);
+	printk("cfe %s() called\n", __func__);
+	printk("cfe: cfe start_streaming() node [%s] ()\n", node_desc[node->id].name);
 
 	if (!check_state(cfe, NODE_ENABLED, node->id)) {
 		cfe_err("%s node link is not enabled.\n",
@@ -1130,6 +1152,9 @@ static int cfe_start_streaming(struct vb2_queue *vq, unsigned int count)
 		goto err_pm_put;
 	}
 
+	// @SK: This will call the sensor node to check the sizes
+
+	printk("cfe %s() calling media_pipeline_start()\n", __func__);
 	ret = media_pipeline_start(&node->pad, &cfe->pipe);
 	if (ret < 0) {
 		cfe_err("Failed to start media pipeline: %d\n", ret);
@@ -1202,6 +1227,7 @@ static void cfe_stop_streaming(struct vb2_queue *vq)
 	bool fe_stop;
 
 	cfe_dbg("%s: [%s] begin.\n", __func__, node_desc[node->id].name);
+	printk("cfe: cfe stop_streaming()()\n");
 
 	spin_lock_irqsave(&cfe->state_lock, flags);
 	fe_stop = is_fe_enabled(cfe) &&
@@ -1669,7 +1695,7 @@ static int cfe_video_link_validate(struct media_link *link)
 	struct v4l2_subdev *source_sd;
 	int ret = 0;
 
-	cfe_dbg("%s: [%s] link \"%s\":%u -> \"%s\":%u\n", __func__,
+	printk("%s: [%s] link validate \"%s\":%u -> \"%s\":%u\n", __func__,
 		node_desc[node->id].name,
 		link->source->entity->name, link->source->index,
 		link->sink->entity->name, link->sink->index);
@@ -1686,6 +1712,7 @@ static int cfe_video_link_validate(struct media_link *link)
 	source_fmt = v4l2_subdev_get_pad_format(source_sd, state,
 						link->source->index);
 	if (!source_fmt) {
+		printk("%s: Not valid, bad source format\n", __func__);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1705,12 +1732,16 @@ static int cfe_video_link_validate(struct media_link *link)
 			goto out;
 		}
 
+		printk(" cfe cfe_video_link_validate(): width=%d height=%d looking for a match of the source with source code=0x%X and  video-output format = 0x%X\n",
+		 source_fmt->width, source_fmt->height, source_fmt->code, pix_fmt->pixelformat);
 		for (i = 0; i < ARRAY_SIZE(formats); i++) {
 			if (formats[i].code == source_fmt->code &&
 			    formats[i].fourcc == pix_fmt->pixelformat) {
 				fmt = &formats[i];
+				printk(" cfe cfe_video_link_validate(): media-bus-format is 0x%X indeed\n", formats[i].code);
 				break;
 			}
+			printk(" cfe cfe_video_link_validate(): media-bus-format is NOT code=0x%X and pixelformat=0x%X\n", formats[i].code, formats[i].fourcc);
 		}
 		if (!fmt) {
 			cfe_err("Format mismatch!\n");
