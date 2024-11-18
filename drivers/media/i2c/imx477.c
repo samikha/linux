@@ -2855,6 +2855,9 @@ static int imx477_start_streaming(struct imx477 *imx477)
 	/* Set vsync trigger mode: 0=standalone, 1=source, 2=sink */
 	tm = (imx477->trigger_mode_of >= 0) ? imx477->trigger_mode_of : trigger_mode;
 	printk("imx477 %s() Writing sync-trigger regs for tm=%d\n", __func__, tm);
+	if (tm > 0)
+		imx477_write_reg(imx477, 0x0350,
+			 IMX477_REG_VALUE_08BIT, 0);	// Need to disable that for multi=camera
 	imx477_write_reg(imx477, IMX477_REG_MC_MODE,
 			 IMX477_REG_VALUE_08BIT, (tm > 0) ? 1 : 0);
 	imx477_write_reg(imx477, IMX477_REG_MS_SEL,
