@@ -156,6 +156,7 @@ enum pad_types {
 #define V4L2_CID_ROI_START_X		(V4L2_CID_USER_S2255_BASE + 10)
 #define V4L2_CID_ROI_START_Y		(V4L2_CID_USER_S2255_BASE + 11)
 #define V4L2_CID_FORCE_TRIGGER		(V4L2_CID_USER_S2255_BASE + 12)
+#define V4L2_CID_BINNING			(V4L2_CID_USER_S2255_BASE + 13)
 
 
 struct imx477_reg {
@@ -1488,7 +1489,7 @@ static struct imx477_mode supported_modes_12bit[] = {
 			.num_of_regs = ARRAY_SIZE(mode_2028x1520_regs),
 			.regs = mode_2028x1520_regs,
 		},
-	},
+	},	
 	{
 		/* 1080p 50fps cropped mode */
 		.orig_width = 2028,
@@ -1781,6 +1782,7 @@ struct imx477 {
 	struct v4l2_ctrl *hflip;
 	struct v4l2_ctrl *vblank;
 	struct v4l2_ctrl *hblank;
+	struct v4l2_ctrl *binning_ctrl;
 	struct v4l2_ctrl *roi_start_x;
 	struct v4l2_ctrl *roi_start_y;
 	struct v4l2_ctrl *i2c_8b_ctrl;
@@ -2114,8 +2116,8 @@ static void imx477_set_ROI_size(struct imx477 *imx477)
     uint16_t y_size  = imx477->roi_height;
     uint16_t x_start = (imx477->roi_start_x == NULL) ? 0 : imx477->roi_start_x->val  & 0xFFFC;		// Needs to be a multiple of 4!
     uint16_t y_start = (imx477->roi_start_y == NULL) ? 0 : imx477->roi_start_y->val  & 0xFFFC;
-    uint16_t x_end   = x_start + x_size  - 1;
-    uint16_t y_end   = y_start + y_size - 1;
+    uint16_t x_end   = x_start + x_size*imx477->binning_ctrl->val - 1;
+    uint16_t y_end   = y_start + y_size*imx477->binning_ctrl->val - 1;
     /*
     if (imx477->hflip->val)		// When flipping end and start are swapped
     {
@@ -2141,8 +2143,8 @@ static void imx477_set_ROI_size(struct imx477 *imx477)
     imx477_write_reg(imx477, IMX477_Y_END_REG,            IMX477_REG_VALUE_16BIT, y_end);
     imx477_write_reg(imx477, IMX477_X_SIZE_REG,           IMX477_REG_VALUE_16BIT, x_size);
     imx477_write_reg(imx477, IMX477_Y_SIZE_REG,           IMX477_REG_VALUE_16BIT, y_size);
-    imx477_write_reg(imx477, IMX477_X_DIG_CROP_SIZE_REG,  IMX477_REG_VALUE_16BIT, x_size);
-    imx477_write_reg(imx477, IMX477_Y_DIG_CROP_SIZE_REG,  IMX477_REG_VALUE_16BIT, y_size);
+    imx477_write_reg(imx477, IMX477_X_DIG_CROP_SIZE_REG,  IMX477_REG_VALUE_16BIT, x_size*imx477->binning_ctrl->val);
+    imx477_write_reg(imx477, IMX477_Y_DIG_CROP_SIZE_REG,  IMX477_REG_VALUE_16BIT, y_size*imx477->binning_ctrl->val);
 }
 
 /*
@@ -2310,6 +2312,9 @@ static int imx477_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = imx477_write_reg(imx477, IMX477_REG_LINE_LENGTH, 2,
 				       imx477->roi_width + ctrl->val);
 		printk("imx477: %s() V4L2_CID_HBLANK: Set line length to total %d\n", __func__, imx477->roi_width + ctrl->val);
+		break;
+	case V4L2_CID_BINNING:
+		printk("imx477: %s() V4L2_CID_BINNING: Value set to %d, not setting done at beggining of start_streaming!\n", __func__, ctrl->val);
 		break;
 
 	case V4L2_CID_ROI_START_X:
@@ -2696,7 +2701,9 @@ static int imx477_set_pad_format(struct v4l2_subdev *sd,
 		
 		// Switch to the first mode matching the number of bits, and then change the ROI
 		// This assumes that the first mode is always the one with the highest non-binning resolution
-		imx477->mode = &mode_list[0];
+		printk("imx477 %s() binning is set to %d, chosing mode regs accordingly. FIXME: Using 0 for now\n", __func__, imx477->binning_ctrl->val);
+		//imx477->mode = &mode_list[((imx477->binning_ctrl->val == 2) ? 1 : 0)];	// Only binning of 0 or 2
+		imx477->mode = &mode_list[0];	// 0 for now
 		imx477->fmt_code = fmt->format.code;
 		
 		imx477->roi_height = fmt->format.height;
@@ -2826,6 +2833,11 @@ static int imx477_start_streaming(struct imx477 *imx477)
 		imx477->common_regs_written = true;
 	}
 
+
+
+	printk("imx477 %s() Chosen mode regs according to binning = %d\n", __func__, imx477->binning_ctrl->val);
+	imx477->mode = &supported_modes_12bit[((imx477->binning_ctrl->val == 2) ? 1 : 0)];
+
 	/* Apply default values of current mode */
 	reg_list = &imx477->mode->reg_list;
 	printk("imx477 %s() writting all the mode-specific I2C registers to the sensor (num_of_regs=%d)\n", __func__, reg_list->num_of_regs);
@@ -2855,9 +2867,8 @@ static int imx477_start_streaming(struct imx477 *imx477)
 	/* Set vsync trigger mode: 0=standalone, 1=source, 2=sink */
 	tm = (imx477->trigger_mode_of >= 0) ? imx477->trigger_mode_of : trigger_mode;
 	printk("imx477 %s() Writing sync-trigger regs for tm=%d\n", __func__, tm);
-	if (tm > 0)
-		imx477_write_reg(imx477, 0x0350,
-			 IMX477_REG_VALUE_08BIT, 0);	// Need to disable that for multi=camera
+	imx477_write_reg(imx477, 0x0350,
+			 IMX477_REG_VALUE_08BIT, (tm > 0) ? 0 : 1);	// Need to disable auto frame length adj for multi=camera
 	imx477_write_reg(imx477, IMX477_REG_MC_MODE,
 			 IMX477_REG_VALUE_08BIT, (tm > 0) ? 1 : 0);
 	imx477_write_reg(imx477, IMX477_REG_MS_SEL,
@@ -3221,6 +3232,17 @@ static const struct v4l2_ctrl_config force_trigger_ctrl = {
         .def = 0,
 };
 
+static const struct v4l2_ctrl_config binning_ctrl = {
+        .ops = &imx477_ctrl_ops,
+        .name = "V4L2_binning",
+        .id = V4L2_CID_BINNING,
+        .type = V4L2_CTRL_TYPE_INTEGER,
+        .min=1,
+        .max = 2,
+        .step = 1,
+        .def = 1,
+};
+
 
 
 static int imx477_init_controls(struct imx477 *imx477)
@@ -3266,7 +3288,7 @@ static int imx477_init_controls(struct imx477 *imx477)
 					   V4L2_CID_VBLANK, 0, 0xffff, 1, 0);
 	imx477->hblank = v4l2_ctrl_new_std(ctrl_hdlr, &imx477_ctrl_ops,
 					   V4L2_CID_HBLANK, 0, 0xffff, 1, 0);
-
+					   
 	imx477->exposure = v4l2_ctrl_new_std(ctrl_hdlr, &imx477_ctrl_ops,
 					     V4L2_CID_EXPOSURE,
 					     IMX477_EXPOSURE_MIN,
@@ -3389,6 +3411,10 @@ static int imx477_init_controls(struct imx477 *imx477)
 	if (imx477->force_trigger_ctrl == NULL)
 	   printk("imx477: imx477_init_controls() v4l2_ctrl_new_custom(force_trigger_ctrl) FAILED err=%d\n", ctrl_hdlr->error);
 
+
+	imx477->binning_ctrl = v4l2_ctrl_new_custom(ctrl_hdlr, &binning_ctrl, NULL);
+	if (imx477->binning_ctrl == NULL)
+	   printk("imx477: imx477_init_controls() v4l2_ctrl_new_custom(binning_ctrl) FAILED err=%d\n", ctrl_hdlr->error);
 
 	ret = v4l2_fwnode_device_parse(&client->dev, &props);
 	if (ret)
