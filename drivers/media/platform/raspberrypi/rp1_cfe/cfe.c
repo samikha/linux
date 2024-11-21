@@ -549,7 +549,7 @@ static int cfe_calc_format_size_bpl(struct cfe_device *cfe,
 
 	f->fmt.pix.sizeimage = f->fmt.pix.height * f->fmt.pix.bytesperline;
 
-	cfe_dbg("%s: " V4L2_FOURCC_CONV " size: %ux%u bpl:%u img_size:%u\n",
+	printk("%s: " V4L2_FOURCC_CONV " size: %ux%u bpl:%u img_size:%u\n",
 		__func__, V4L2_FOURCC_CONV_ARGS(f->fmt.pix.pixelformat),
 		f->fmt.pix.width, f->fmt.pix.height,
 		f->fmt.pix.bytesperline, f->fmt.pix.sizeimage);
@@ -1753,9 +1753,13 @@ static int cfe_video_link_validate(struct media_link *link)
 		const struct cfe_fmt *fmt;
 		u32 source_size;
 
+		printk(" cfe cfe_video_link_validate(): Metadata check width=%d height=%d looking for a match of the source with source_fmt->code=0x%X\n",
+		 source_fmt->width, source_fmt->height, source_fmt->code);	 
+		 
 		fmt = find_format_by_code(source_fmt->code);
 		if (!fmt || fmt->fourcc != meta_fmt->dataformat) {
 			cfe_err("Metadata format mismatch!\n");
+			printk("Metadata match error for above source_fmt->code: fmt=0x%X  , fmt->fourcc = 0x%X  meta_fmt->dataformat=0x%X\n", (unsigned int)fmt, fmt->fourcc, meta_fmt->dataformat);
 			ret = -EINVAL;
 			goto out;
 		}
