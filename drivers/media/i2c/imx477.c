@@ -126,8 +126,8 @@ MODULE_PARM_DESC(trigger_mode, "Set vsync trigger mode: 1=source, 2=sink");
 
 
 /* Embedded metadata stream structure */
-#define IMX477_EMBEDDED_LINE_WIDTH 16384
-#define IMX477_NUM_EMBEDDED_LINES 1
+#define IMX477_EMBEDDED_LINE_WIDTH 16384	// The width should match the image data?
+#define IMX477_NUM_EMBEDDED_LINES 2 //1  Changed to 2 since this is what the sensor gives
 
 enum pad_types {
 	IMAGE_PAD,
@@ -509,8 +509,8 @@ static const struct imx477_reg mode_common_regs[] = {
 	{0x0114, 0x01},
 	{0x0350, 0x01},		// Automatically use exposure len as frame_len in case the first one is larger
 						// Check https://patchwork.kernel.org/project/linux-media/patch/20230530173000.3060865-11-dave.stevenson@raspberrypi.com/
-	//{0xbcf1, 0x02},
-	{0xbcf1, 0x00},		// No embedded data!
+	{0xbcf1, 0x02},		// 2 embedded data lines
+	//{0xbcf1, 0x00},		// No embedded data!
 	{0x3ff9, 0x01},		// Related to digital gain?
 };
 
@@ -2041,8 +2041,8 @@ static int imx477_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	try_fmt_img->field = V4L2_FIELD_NONE;
 
 	/* Initialize try_fmt for the embedded metadata pad */
-	try_fmt_meta->width = IMX477_EMBEDDED_LINE_WIDTH;
-	try_fmt_meta->height = IMX477_NUM_EMBEDDED_LINES;		// Keep this sicne now we disabled metadata?
+	try_fmt_meta->width = imx477->roi_width; //IMX477_EMBEDDED_LINE_WIDTH;		// The embedded data is always the same width as the image data?
+	try_fmt_meta->height = IMX477_NUM_EMBEDDED_LINES;
 	try_fmt_meta->code = MEDIA_BUS_FMT_SENSOR_DATA;
 	try_fmt_meta->field = V4L2_FIELD_NONE;
 
@@ -2559,10 +2559,10 @@ static void imx477_update_image_pad_format(struct imx477 *imx477,
 	imx477_reset_colorspace(&fmt->format);
 }
 
-static void imx477_update_metadata_pad_format(struct v4l2_subdev_format *fmt)
+static void imx477_update_metadata_pad_format(struct imx477 *imx477, struct v4l2_subdev_format *fmt)
 {
 	printk("imx477 %s() called\n", __func__);
-	fmt->format.width = IMX477_EMBEDDED_LINE_WIDTH;
+	fmt->format.width = imx477->roi_width; //IMX477_EMBEDDED_LINE_WIDTH;	// Using ROI'd width?
 	fmt->format.height = IMX477_NUM_EMBEDDED_LINES;
 	fmt->format.code = MEDIA_BUS_FMT_SENSOR_DATA;
 	fmt->format.field = V4L2_FIELD_NONE;
@@ -2600,7 +2600,7 @@ static int imx477_get_pad_format(struct v4l2_subdev *sd,
 			       imx477_get_format_code(imx477, imx477->fmt_code);
 			printk("imx477 %s() updating format code after imx477_update_image_pad_format() to code=0x%X\n", __func__, fmt->format.code);
 		} else {
-			imx477_update_metadata_pad_format(fmt);
+			imx477_update_metadata_pad_format(imx477, fmt);
 		}
 	}
 
@@ -2739,7 +2739,7 @@ static int imx477_set_pad_format(struct v4l2_subdev *sd,
 			*framefmt = fmt->format;
 		} else {
 			/* Only one embedded data mode is supported */
-			imx477_update_metadata_pad_format(fmt);
+			imx477_update_metadata_pad_format(imx477, fmt);
 		}
 	}
 
